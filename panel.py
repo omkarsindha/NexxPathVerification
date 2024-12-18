@@ -1,3 +1,4 @@
+import paramiko
 import wx
 import ssh_thread
 import utils
@@ -96,27 +97,35 @@ class Panel(wx.Panel):
             self.text.WriteText(io + "\n")
 
     def on_start(self, event):
-        self.timer.Start(200)
-        self.stop.Enable()
-        self.load.Disable()
-        self.start.Disable()
         delay = self.delay.GetValue()
         self.wxconfig.Write("/nexxDelay", str(delay))
-        self.executor_thread = ssh_thread.CommandExecutor(self.nexx_ip, self.nexx_port, delay, self.config.IOs)
-        self.executor_thread.start()
+        try:
+            self.executor_thread = ssh_thread.CommandExecutor(self.nexx_ip, self.nexx_port, delay, self.config.IOs)
+            self.executor_thread.start()  # Ensure you start the thread if initialization succeeds
+            self.timer.Start(200)
+            self.stop.Enable()
+            self.load.Disable()
+            self.start.Disable()
+        except paramiko.SSHException as e:
+            self.error_alert(f"\nSSH authentication error: {e}")
+        except Exception as ex:
+            self.error_alert(f"\nUnexpected error during automation startup: {str(ex)}")
 
     def on_stop(self, event=None):
+        if self.executor_thread:
+            self.executor_thread.stop()
+        self.executor_thread = None
         self.start.Enable()
         self.load.Enable()
         self.stop.Disable()
         if self.timer.IsRunning():
             self.timer.Stop()
-        self.parent.SetStatusText("Complete :-)")
+        self.parent.SetStatusText("Test stopped")
 
     def OnTimer(self, event):
         """Called periodically while the flooder threads are running."""
         self.animation_counter += 1
-        self.parent.SetStatusText(f"In progress{'.' * (self.animation_counter % 10)}")
+        self.parent.SetStatusText(f"Test in progress{'.' * (self.animation_counter % 10)}")
         if not self.executor_thread.is_alive():
             self.timer.Stop()
             self.parent.SetStatusText(f"Test Complete :)")
